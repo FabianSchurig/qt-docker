@@ -1,0 +1,85 @@
+name: Build Qt Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-host:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push qt-clang-host Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: Dockerfile
+          target: qt-clang-host
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ghcr.io/fabianschurig/qt/qt6.7-clang-host:latest
+          build-args: |
+            QT_VERSION=6.7.2
+            ANDROID_NDK_VERSION=26.1.10909125
+            CMDLINE_TOOLS_VERSION=11076708
+            ANDROID_PLATFORM=android-34
+            BUILD_TOOLS_VERSION=34.0.0
+            OPENJDK_VERSION=17
+
+  build-android:
+    runs-on: self-hosted
+    needs: build-host
+    strategy:
+      matrix:
+        android_arch:
+          - arm64-v8a
+          - x86_64
+          - x86
+          - armeabi-v7a
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push qt-clang-android Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: Dockerfile
+          target: qt-clang-android
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ghcr.io/fabianschurig/qt/qt6.7-clang-android:${{ matrix.android_arch }}
+          build-args: |
+            QT_VERSION=6.7.2
+            ANDROID_ARCH=${{ matrix.android_arch }}
+            ANDROID_NDK_VERSION=26.1.10909125
