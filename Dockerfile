@@ -1,5 +1,5 @@
 # Use the official Ubuntu base image
-FROM ubuntu:24.04 AS qt-clang-host
+FROM ubuntu:24.04 AS qt-clang-host-base
 
 # Set build arguments
 ARG QT_VERSION=6.7.2
@@ -92,6 +92,10 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon-x11-dev \
     && rm -rf "/var/lib/apt/lists/*"
 
+FROM qt-clang-host-base AS qt-clang-host-builder
+
+ARG QT_VERSION=6.7.2
+
 # Download and install Qt for Android
 RUN wget https://download.qt.io/archive/qt/${QT_VERSION%.*}/${QT_VERSION}/single/qt-everywhere-src-${QT_VERSION}.tar.xz -O /tmp/qt-everywhere-src.tar.xz && \
     tar -xf /tmp/qt-everywhere-src.tar.xz -C /opt && \
@@ -99,12 +103,17 @@ RUN wget https://download.qt.io/archive/qt/${QT_VERSION%.*}/${QT_VERSION}/single
 
 # Build host Qt
 RUN mkdir -p /opt/build-host && cd /opt/build-host && \
-    /opt/qt-everywhere-src-${QT_VERSION}/configure -developer-build -nomake tests -nomake examples && \
+    /opt/qt-everywhere-src-${QT_VERSION}/configure -nomake tests -nomake examples && \
     cmake --build . --target host_tools -- -j$(nproc)
 
-FROM qt-clang-host AS qt-clang-android
+FROM qt-clang-host-base AS qt-clang-host
 
-# Set build arguments
+ARG QT_VERSION=6.7.2
+
+# Copy only necessary install to save storage
+COPY --from=qt-clang-host-builder /opt/build-host /opt/build-host
+
+FROM qt-clang-host-builder AS qt-clang-android-builder
 ARG QT_VERSION=6.7.2
 
 # arm64-v8a, x86_64, x86, and armeabi-v7a
@@ -124,3 +133,9 @@ RUN mkdir -p /opt/build-qt-android-${ANDROID_ARCH} && cd /opt/build-qt-android-$
 RUN cd /opt/build-qt-android-${ANDROID_ARCH} && \
     cmake --build . --parallel -- -j$(nproc) && \
     cmake --install .
+
+FROM qt-clang-host-base AS qt-clang-android
+ARG QT_VERSION=6.7.2
+
+COPY --from=qt-clang-host-builder /opt/build-host /opt/build-host
+COPY --from=qt-clang-android-builder /opt/Qt/${QT_VERSION} /opt/Qt/${QT_VERSION}
